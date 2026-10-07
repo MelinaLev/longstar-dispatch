@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send dispatch</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 24px;
+         background: #f4f5f7; color: #1c1e21; }
+  .card { max-width: 480px; margin: 0 auto; background: #fff; border-radius: 14px;
+          padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  h1 { font-size: 20px; margin: 0 0 14px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; margin-top: 14px; }
+  #who { font-size: 16px; margin: 4px 0 0; }
+  pre { white-space: pre-wrap; word-wrap: break-word; font: inherit; font-size: 15px;
+        background: #f4f5f7; border-radius: 10px; padding: 12px; margin: 6px 0 0; }
+  a.btn { display: block; text-align: center; margin-top: 20px; padding: 15px; border-radius: 12px;
+          background: #1a73e8; color: #fff; font-size: 17px; font-weight: 600; text-decoration: none; }
+  .err { color: #b3261e; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Long Star Dispatch</h1>
+  <div id="content"></div>
+</div>
+<script>
+  // Everything comes after the # in the link, so phone numbers and job
+  // details stay on the phone and are never sent to the web host.
+  var params = new URLSearchParams(location.hash.slice(1));
+
+  function normalize(raw) {
+    var d = String(raw).replace(/\D/g, '');
+    if (d.length === 10) return '+1' + d;
+    if (d.length === 11 && d[0] === '1') return '+' + d;
+    return '';
+  }
+
+  var numbers = (params.get('to') || '').split(',').map(normalize).filter(Boolean);
+  numbers = numbers.filter(function (n, i) { return numbers.indexOf(n) === i; });
+  var body = params.get('body') || '';
+  var content = document.getElementById('content');
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  if (!numbers.length) {
+    content.appendChild(el('p', 'err', 'No valid phone numbers on this job. Check the Contacts tab.'));
+  } else {
+    var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+    var link = apple
+      ? 'sms://open?addresses=' + numbers.join(',') + '&body=' + encodeURIComponent(body)
+      : 'sms:' + numbers.join(',') + '?body=' + encodeURIComponent(body);
+
+    content.appendChild(el('div', 'label', 'Group text to'));
+    content.appendChild(el('p', '', numbers.join(', '))).id = 'who';
+    content.appendChild(el('div', 'label', 'Message'));
+    content.appendChild(el('pre', '', body));
+    var btn = el('a', 'btn', 'Open Messages');
+    btn.href = link;
+    content.appendChild(btn);
+
+    // Tell the board this job's SEND was tapped, so it can stamp "Sent".
+    // Only the row number is sent, never phone numbers or job details.
+    var row = params.get('row');
+    var log = params.get('log') || '';
+    if (row && log.indexOf('https://script.google.com/macros/') === 0) {
+      try {
+        fetch(log + '?row=' + encodeURIComponent(row),
+              { mode: 'no-cors', credentials: 'omit', keepalive: true });
+      } catch (err) {}
+    }
+
+    // Try to open Messages right away; the button is the fallback.
+    window.location.href = link;
+  }
+</script>
+</body>
+</html>
