@@ -17,6 +17,7 @@
   a.btn { display: block; text-align: center; margin-top: 20px; padding: 15px; border-radius: 12px;
           background: #1a73e8; color: #fff; font-size: 17px; font-weight: 600; text-decoration: none; }
   .err { color: #b3261e; font-weight: 600; }
+  .note { background: #fff4ce; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 0; }
 </style>
 </head>
 <body>
@@ -27,7 +28,6 @@
 <script>
   // Everything comes after the # in the link, so phone numbers and job
   // details stay on the phone and are never sent to the web host.
-  var params = new URLSearchParams(location.hash.slice(1));
 
   function normalize(raw) {
     var d = String(raw).replace(/\D/g, '');
@@ -36,11 +36,6 @@
     return '';
   }
 
-  var numbers = (params.get('to') || '').split(',').map(normalize).filter(Boolean);
-  numbers = numbers.filter(function (n, i) { return numbers.indexOf(n) === i; });
-  var body = params.get('body') || '';
-  var content = document.getElementById('content');
-
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -48,36 +43,75 @@
     return e;
   }
 
-  if (!numbers.length) {
-    content.appendChild(el('p', 'err', 'No valid phone numbers on this job. Check the Contacts tab.'));
-  } else {
+  // Remembers which links this tab already opened, so reloading the page or
+  // coming back to the tab does not fire the same dispatch again.
+  function wasOpened(key) {
+    try { return sessionStorage.getItem(key) === '1'; } catch (e) { return false; }
+  }
+  function markOpened(key) {
+    try { sessionStorage.setItem(key, '1'); } catch (e) {}
+  }
+
+  function render() {
+    var raw = location.hash.slice(1);
+    var params = new URLSearchParams(raw);
+    var content = document.getElementById('content');
+    content.textContent = '';
+
+    var numbers = (params.get('to') || '').split(',').map(normalize).filter(Boolean);
+    numbers = numbers.filter(function (n, i) { return numbers.indexOf(n) === i; });
+    var body = params.get('body') || '';
+
+    if (!numbers.length) {
+      content.appendChild(el('p', 'err', 'No valid phone numbers on this job. Check the Employee List.'));
+      return;
+    }
+
     var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
     var link = apple
       ? 'sms://open?addresses=' + numbers.join(',') + '&body=' + encodeURIComponent(body)
       : 'sms:' + numbers.join(',') + '?body=' + encodeURIComponent(body);
 
+    // Tell the board this job's SEND was tapped, so it can stamp "Sent".
+    // Only the row number is sent, never phone numbers or job details.
+    function logSend() {
+      var row = params.get('row');
+      var log = params.get('log') || '';
+      if (row && log.indexOf('https://script.google.com/macros/') === 0) {
+        try {
+          fetch(log + '?row=' + encodeURIComponent(row),
+                { mode: 'no-cors', credentials: 'omit', keepalive: true });
+        } catch (err) {}
+      }
+    }
+
+    var key = 'opened:' + raw;
+    var already = wasOpened(key);
+
+    if (already) {
+      content.appendChild(el('p', 'note', 'This dispatch was already opened. Tap the button to open it again.'));
+    }
     content.appendChild(el('div', 'label', 'Group text to'));
     content.appendChild(el('p', '', numbers.join(', '))).id = 'who';
     content.appendChild(el('div', 'label', 'Message'));
     content.appendChild(el('pre', '', body));
     var btn = el('a', 'btn', 'Open Messages');
     btn.href = link;
+    btn.addEventListener('click', logSend);
     content.appendChild(btn);
 
-    // Tell the board this job's SEND was tapped, so it can stamp "Sent".
-    // Only the row number is sent, never phone numbers or job details.
-    var row = params.get('row');
-    var log = params.get('log') || '';
-    if (row && log.indexOf('https://script.google.com/macros/') === 0) {
-      try {
-        fetch(log + '?row=' + encodeURIComponent(row),
-              { mode: 'no-cors', credentials: 'omit', keepalive: true });
-      } catch (err) {}
+    // Open Messages automatically only the first time this link is seen.
+    if (!already) {
+      markOpened(key);
+      logSend();
+      window.location.href = link;
     }
-
-    // Try to open Messages right away; the button is the fallback.
-    window.location.href = link;
   }
+
+  // A new SEND link that lands in a tab that is already open only changes
+  // the part after the #, so the page has to redraw itself for the new job.
+  window.addEventListener('hashchange', render);
+  render();
 </script>
 </body>
 </html>
