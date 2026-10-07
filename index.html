@@ -64,6 +64,17 @@
     btn.href = link;
     content.appendChild(btn);
 
+    // Tell the board this job's SEND was tapped, so it can stamp "Sent".
+    // Only the row number is sent, never phone numbers or job details.
+    var row = params.get('row');
+    var log = params.get('log') || '';
+    if (row && log.indexOf('https://script.google.com/macros/') === 0) {
+      try {
+        fetch(log + '?row=' + encodeURIComponent(row),
+              { mode: 'no-cors', credentials: 'omit', keepalive: true });
+      } catch (err) {}
+    }
+
     // Try to open Messages right away; the button is the fallback.
     window.location.href = link;
   }
